@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#
+src/__pycache__/
+
+.vscode/browse.vc.*
