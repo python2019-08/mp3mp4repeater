@@ -221,5 +221,6 @@ __marimo__/
 
 #
 src/__pycache__/
-
+src/v1/__pycache__/
+src/v2/__pycache__/
 .vscode/browse.vc.*
