@@ -20,10 +20,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget,
                              QPushButton, QSlider, QFileDialog,
                              QLabel, QDoubleSpinBox)
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 STEP = 0.1        # A/B 微调步长（秒）
 TICK_MS = 50      # UI 刷新间隔；进程内读属性开销极小
 SEEK_PRECISION = "exact"
+SHORTCUT_LABELS = {"Space": "空格", "Left": "←", "Right": "→"}  # 按钮下方提示文案
 
 
 def force_c_numeric_locale():
@@ -48,6 +50,7 @@ class MPVRepeater(QMainWindow):
         self.a_point = None
         self.b_point = None
         self._dragging = False
+        self.shortcuts = []
 
         self.init_ui()
         self.timer = QTimer(self)
@@ -97,13 +100,18 @@ class MPVRepeater(QMainWindow):
         self.btn_b_right.clicked.connect(lambda: self.adjust_b(STEP))
         self.btn_reset_ab.clicked.connect(self.reset_ab)
 
-        ab_layout.addWidget(self.btn_setA)
-        ab_layout.addWidget(self.btn_a_left)
-        ab_layout.addWidget(self.btn_a_right)
-        ab_layout.addWidget(self.btn_setB)
-        ab_layout.addWidget(self.btn_b_left)
-        ab_layout.addWidget(self.btn_b_right)
-        ab_layout.addWidget(self.btn_reset_ab)
+        # 快捷键：A/B 用同一字母设置，微调用 Z X / C V（左键位←，右键位→）
+        for key, button, slot in (
+            ("A", self.btn_setA, self.set_a),
+            ("Z", self.btn_a_left, lambda: self.adjust_a(-STEP)),
+            ("X", self.btn_a_right, lambda: self.adjust_a(STEP)),
+            ("B", self.btn_setB, self.set_b),
+            ("C", self.btn_b_left, lambda: self.adjust_b(-STEP)),
+            ("V", self.btn_b_right, lambda: self.adjust_b(STEP)),
+            ("R", self.btn_reset_ab, self.reset_ab),
+        ):
+            ab_layout.addWidget(self.bind_shortcut(key, button, slot))
+
         main_layout.addLayout(ab_layout)
 
         ctrl_layout = QHBoxLayout()
@@ -123,13 +131,37 @@ class MPVRepeater(QMainWindow):
         self.btn_back.clicked.connect(lambda: self.seek(-0.5))
         self.btn_fwd.clicked.connect(lambda: self.seek(0.5))
 
+        # 播放控制：空格播放/暂停，←/→ 快退/快进
         ctrl_layout.addWidget(self.btn_open)
-        ctrl_layout.addWidget(self.btn_play)
-        ctrl_layout.addWidget(self.btn_back)
-        ctrl_layout.addWidget(self.btn_fwd)
+        for key, button, slot in (
+            ("Space", self.btn_play, self.play_pause),
+            ("Left", self.btn_back, lambda: self.seek(-0.5)),
+            ("Right", self.btn_fwd, lambda: self.seek(0.5)),
+        ):
+            ctrl_layout.addWidget(self.bind_shortcut(key, button, slot))
+
         ctrl_layout.addWidget(QLabel("倍速:"))
         ctrl_layout.addWidget(self.speed_spin)
         main_layout.addLayout(ctrl_layout)
+
+    def bind_shortcut(self, key, button, slot):
+        """绑定窗口级快捷键，返回「按钮 + 下方按键提示」的组合控件。"""
+        shortcut = QShortcut(QKeySequence(key), self)
+        shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.activated.connect(slot)
+        self.shortcuts.append(shortcut)  # 持有引用，避免被垃圾回收
+
+        hint = QLabel(SHORTCUT_LABELS.get(key, key))
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setStyleSheet("color: #666; font-size: 14px;")
+
+        wrapper = QWidget()
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(button)
+        layout.addWidget(hint)
+        return wrapper
 
     # ---------- libmpv 生命周期 ----------
 
